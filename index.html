@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>贪吃蛇 - Snake</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+  }
+  body {
+    background: #0a0a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: #fff;
+  }
+  #gameContainer {
+    background: #111128;
+    padding: 30px 40px;
+    border-radius: 20px;
+    box-shadow: 0 0 60px rgba(0,100,200,0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  #header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #4ade80, #22d3ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+  }
+  #scoreBox {
+    font-size: 18px;
+    color: #94a3b8;
+  }
+  #scoreBox span {
+    color: #4ade80;
+    font-weight: bold;
+    font-variant-numeric: tabular-nums;
+  }
+  #canvasWrapper {
+    position: relative;
+    border: 2px solid #1e293b;
+    border-radius: 8px;
+    line-height: 0;
+  }
+  #gameCanvas {
+    display: block;
+    background: #0f172a;
+    border-radius: 6px;
+  }
+  #overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0,0,0,0.7);
+    border-radius: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  #overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #overlay h2 {
+    font-size: 42px;
+    margin-bottom: 6px;
+  }
+  #overlay .sub {
+    font-size: 16px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+  }
+  #overlay .final-score {
+    font-size: 20px;
+    color: #4ade80;
+    margin-bottom: 20px;
+  }
+  #overlay .controls {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 20px;
+    text-align: center;
+    line-height: 1.8;
+  }
+  #overlay .controls kbd {
+    background: #1e293b;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid #334155;
+    font-size: 12px;
+    color: #cbd5e1;
+  }
+  .btn {
+    padding: 12px 44px;
+    font-size: 18px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #4ade80, #22d3ee);
+    color: #0f172a;
+    font-weight: bold;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 20px rgba(74,222,128,0.25);
+    letter-spacing: 1px;
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 28px rgba(74,222,128,0.4);
+  }
+  .btn:active {
+    transform: translateY(0);
+  }
+  #footer {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    font-size: 13px;
+    color: #475569;
+  }
+  @media (max-width: 520px) {
+    #gameContainer { padding: 15px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="gameContainer">
+  <div id="header">
+    <h1>🐍 贪吃蛇</h1>
+    <div id="scoreBox">得分 <span id="scoreDisplay">0</span></div>
+  </div>
+  <div id="canvasWrapper">
+    <canvas id="gameCanvas" width="480" height="480"></canvas>
+    <div id="overlay">
+      <h2 id="overlayTitle">🐍 贪吃蛇</h2>
+      <div class="sub" id="overlaySub">SNAKE</div>
+      <div class="controls" id="overlayControls">
+        <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> 或 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动
+      </div>
+      <div class="final-score" id="overlayScore"></div>
+      <button class="btn" id="actionBtn">开始游戏</button>
+    </div>
+  </div>
+  <div id="footer">
+    <span>按空格键或P键暂停</span>
+    <span>每吃一个食物增长1格</span>
+  </div>
+</div>
+
+<script>
+const CELL = 24;
+const COLS = 20;
+const ROWS = 20;
+const W = COLS * CELL;
+const H = ROWS * CELL;
+
+const DIR = { UP: 0, RIGHT: 1, DOWN: 2, LEFT: 3 };
+const DIR_VEC = [
+  { dx: 0, dy: -1 },
+  { dx: 1, dy: 0 },
+  { dx: 0, dy: 1 },
+  { dx: -1, dy: 0 },
+];
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlaySub = document.getElementById('overlaySub');
+const overlayScore = document.getElementById('overlayScore');
+const overlayControls = document.getElementById('overlayControls');
+const actionBtn = document.getElementById('actionBtn');
+const scoreDisplay = document.getElementById('scoreDisplay');
+
+let game = null;
+let gameLoopId = null;
+let keys = {};
+let pendingDir = null;
+
+// ==================== GAME STATE ====================
+function createGame() {
+  const startX = Math.floor(COLS / 2);
+  const startY = Math.floor(ROWS / 2);
+  return {
+    snake: [
+      { x: startX, y: startY },
+      { x: startX - 1, y: startY },
+      { x: startX - 2, y: startY },
+    ],
+    dir: DIR.RIGHT,
+    nextDir: DIR.RIGHT,
+    food: null,
+    score: 0,
+    state: 'playing', // 'playing', 'paused', 'gameover', 'win'
+    speed: 8, // moves per second
+    moveTimer: 0,
+    growing: false,
+  };
+}
+
+function spawnFood() {
+  if (!game) return;
+  const occupied = new Set(game.snake.map(s => `${s.x},${s.y}`));
+  const empty = [];
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      if (!occupied.has(`${x},${y}`)) empty.push({ x, y });
+    }
+  }
+  if (empty.length === 0) {
+    game.state = 'win';
+    return;
+  }
+  const f = empty[Math.floor(Math.random() * empty.length)];
+  game.food = f;
+}
+
+function resetGame() {
+  game = createGame();
+  spawnFood();
+  scoreDisplay.textContent = '0';
+}
+
+function updateGame() {
+  if (!game || game.state !== 'playing') return;
+
+  // Handle pending direction
+  if (pendingDir !== null) {
+    const opposite = (game.dir + 2) % 4;
+    if (pendingDir !== opposite) {
+      game.nextDir = pendingDir;
+    }
+    pendingDir = null;
+  }
+
+  // Speed-based timer
+  const interval = 1000 / game.speed;
+  game.moveTimer += 16.67; // ~60fps delta
+  if (game.moveTimer < interval) return;
+  game.moveTimer -= interval;
+
+  // Apply direction
+  game.dir = game.nextDir;
+
+  // Move head
+  const head = game.snake[0];
+  const vec = DIR_VEC[game.dir];
+  const newHead = { x: head.x + vec.dx, y: head.y + vec.dy };
+
+  // Wall collision
+  if (newHead.x < 0 || newHead.x >= COLS || newHead.y < 0 || newHead.y >= ROWS) {
+    game.state = 'gameover';
+    showOverlay();
+    return;
+  }
+
+  // Self collision
+  for (const seg of game.snake) {
+    if (seg.x === newHead.x && seg.y === newHead.y) {
+      game.state = 'gameover';
+      showOverlay();
+      return;
+    }
+  }
+
+  // Move snake
+  game.snake.unshift(newHead);
+
+  // Check food
+  if (game.food && newHead.x === game.food.x && newHead.y === game.food.y) {
+    game.score++;
+    scoreDisplay.textContent = game.score;
+    // Speed up slightly every 5 points
+    if (game.score % 5 === 0) {
+      game.speed = Math.min(game.speed + 1, 15);
+    }
+    spawnFood();
+    if (game.state === 'win') {
+      showOverlay();
+      return;
+    }
+  } else {
+    game.snake.pop();
+  }
+}
+
+// ==================== RENDER ====================
+function render() {
+  if (!game) return;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      const px = x * CELL, py = y * CELL;
+      ctx.fillStyle = (x + y) % 2 === 0 ? '#0f172a' : '#131d35';
+      ctx.fillRect(px, py, CELL, CELL);
+    }
+  }
+
+  // Food
+  if (game.food) {
+    const fx = game.food.x * CELL + CELL / 2;
+    const fy = game.food.y * CELL + CELL / 2;
+    const pulse = 1 + 0.08 * Math.sin(Date.now() / 150);
+
+    // Glow
+    ctx.shadowColor = '#ef4444';
+    ctx.shadowBlur = 12;
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(fx, fy, CELL / 2 * pulse * 0.8, 0, Math.PI * 2);
+    ctx.fillStyle = '#fca5a5';
+    ctx.fill();
+
+    // Inner
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(fx, fy, CELL / 2 * pulse * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ef4444';
+    ctx.fill();
+
+    // Highlight
+    ctx.beginPath();
+    ctx.arc(fx - 3, fy - 3, CELL * 0.12, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fill();
+  }
+
+  // Snake
+  const snake = game.snake;
+  for (let i = snake.length - 1; i >= 0; i--) {
+    const seg = snake[i];
+    const px = seg.x * CELL, py = seg.y * CELL;
+    const t = i / Math.max(snake.length, 1);
+
+    // Head gradient, tail fades
+    if (i === 0) {
+      // Head
+      ctx.shadowColor = '#4ade80';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#4ade80';
+      roundRect(ctx, px + 1, py + 1, CELL - 2, CELL - 2, 5);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Eyes
+      const eyeSize = 3;
+      ctx.fillStyle = '#0f172a';
+      const cx = seg.x * CELL + CELL / 2;
+      const cy = seg.y * CELL + CELL / 2;
+      const vec = DIR_VEC[game.dir];
+      const eo = 4; // eye offset from center
+      ctx.beginPath();
+      ctx.arc(cx + vec.dx * eo - vec.dy * eo, cy + vec.dy * eo + vec.dx * eo, eyeSize, 0, Math.PI * 2);
+      ctx.arc(cx + vec.dx * eo + vec.dy * eo, cy + vec.dy * eo - vec.dx * eo, eyeSize, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Body segments
+      const hue = 120 + t * 40; // green to teal
+      const lightness = 40 + (1 - t) * 20;
+      ctx.fillStyle = `hsl(${hue}, 80%, ${lightness}%)`;
+      const pad = 1 + t * 1.5;
+      roundRect(ctx, px + pad, py + pad, CELL - pad * 2, CELL - pad * 2, 3);
+      ctx.fill();
+    }
+  }
+
+  // Pause overlay
+  if (game.state === 'paused') {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⏸ 暂停', W / 2, H / 2);
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('按空格继续', W / 2, H / 2 + 40);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ==================== OVERLAY ====================
+function showOverlay() {
+  if (!game) return;
+
+  if (game.state === 'gameover') {
+    overlayTitle.textContent = '💀 游戏结束';
+    overlaySub.textContent = 'GAME OVER';
+    overlayScore.textContent = '得分: ' + game.score;
+    overlayScore.style.display = 'block';
+    overlayControls.style.display = 'none';
+    actionBtn.textContent = '重新开始';
+  } else if (game.state === 'win') {
+    overlayTitle.textContent = '🎉 你赢了！';
+    overlaySub.textContent = '完美通关！';
+    overlayScore.textContent = '最终得分: ' + game.score;
+    overlayScore.style.display = 'block';
+    overlayControls.style.display = 'none';
+    actionBtn.textContent = '再来一局';
+  } else if (game.state === 'paused') {
+    overlayTitle.textContent = '⏸ 暂停';
+    overlaySub.textContent = 'PAUSED';
+    overlayScore.style.display = 'none';
+    overlayControls.style.display = 'none';
+    actionBtn.textContent = '继续';
+  } else {
+    // Menu
+    overlayTitle.textContent = '🐍 贪吃蛇';
+    overlaySub.textContent = 'SNAKE';
+    overlayScore.style.display = 'none';
+    overlayControls.style.display = 'block';
+    actionBtn.textContent = '开始游戏';
+  }
+  overlay.classList.add('show');
+}
+
+function hideOverlay() {
+  overlay.classList.remove('show');
+}
+
+// ==================== GAME LOOP ====================
+function startPlaying() {
+  hideOverlay();
+  if (game && game.state === 'paused') {
+    game.state = 'playing';
+    return;
+  }
+  resetGame();
+}
+
+function gameLoop() {
+  if (!game) {
+    gameLoopId = requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  updateGame();
+  render();
+
+  if (game.state === 'gameover' || game.state === 'win') {
+    showOverlay();
+  }
+
+  gameLoopId = requestAnimationFrame(gameLoop);
+}
+
+// ==================== INPUT ====================
+document.addEventListener('keydown', (e) => {
+  const key = e.key;
+
+  // Direction changes (queued, not instant)
+  switch (key) {
+    case 'ArrowUp': case 'w': case 'W': pendingDir = DIR.UP; break;
+    case 'ArrowDown': case 's': case 'S': pendingDir = DIR.DOWN; break;
+    case 'ArrowLeft': case 'a': case 'A': pendingDir = DIR.LEFT; break;
+    case 'ArrowRight': case 'd': case 'D': pendingDir = DIR.RIGHT; break;
+  }
+
+  // Pause toggle (space or P)
+  if (key === ' ' || key === 'Space' || key === 'p' || key === 'P') {
+    e.preventDefault();
+    if (game && game.state === 'playing') {
+      game.state = 'paused';
+      showOverlay();
+    } else if (game && game.state === 'paused') {
+      startPlaying();
+    }
+    return;
+  }
+
+  if (key.startsWith('Arrow')) e.preventDefault();
+});
+
+actionBtn.addEventListener('click', () => {
+  if (game && game.state === 'paused') {
+    startPlaying();
+    return;
+  }
+  startPlaying();
+});
+
+// ==================== INIT ====================
+game = null;
+overlay.classList.add('show');
+showOverlay();
+
+// Use consistent timestep via requestAnimationFrame
+gameLoop();
+</script>
+</body>
+</html>
